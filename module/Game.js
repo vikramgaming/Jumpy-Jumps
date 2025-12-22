@@ -8,7 +8,7 @@ export class Entity {
 	 * @param {HTMLImageElement} idle
 	 * @param {HTMLImageElement[]} walk
 	 */
-	constructor(name, x, y, width, height, idle, walk) {
+	constructor(name, hp, x, y, width, height, idle, walk) {
 		/** @type {string} */
 		this.name = name;
 
@@ -17,6 +17,12 @@ export class Entity {
 
 		/** @type {number} */
 		this.y = y;
+
+		/** @type {number} */
+		this.maxHp = hp;
+
+		/** @type {number} */
+		this.hp = hp;
 
 		this.velocityX = 0;
 		this.velocityY = 0;
@@ -81,6 +87,8 @@ export class Entity {
 			width: this.width,
 			height: this.height,
 			facingLeft: this.facingLeft,
+			maxHp: this.maxHp,
+			hp: this.hp,
 		});
 	}
 }

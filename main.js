@@ -14,6 +14,7 @@ const game = new Canvas2D(ctx);
 const joystick = new Joystick(canvas, canvas.width * 0.2, canvas.height * 0.85);
 const player = new Entity(
 	"player",
+	50,
 	canvas.width / 2,
 	0,
 	40,
@@ -30,7 +31,7 @@ const camera = { x: 0, y: 0 };
 let gameover = false;
 let stage = 1;
 let nextStage = false;
-let nextStageText = true;
+let displayTitle = true;
 let hardmode = false;
 
 const gravity = 0.5;
@@ -77,11 +78,12 @@ const setEnemy = {
 			"./enemy/away3.png",
 			"./enemy/away4.png",
 		]),
-		width: 60,
-		height: 60,
-		speed: -1,
+		width: 40,
+		height: 40,
+		speed: -3,
 		spawnIndex: 1,
 		spawnTime: 3000,
+		damage: 3,
 	},
 	low: {
 		idle: image("./enemy/low2.png"),
@@ -128,53 +130,9 @@ function update() {
 	if (
 		player.isLanding &&
 		joystick.direction === "up" &&
-		joystick.handlePos.mag() > 30
+		joystick.handlePos.mag() > 50
 	)
-		player.velocityY = move.y * 3;
-
-	// === enemy ===
-	for (let i = enemy.away.length - 1; i >= 0; i--) {
-		const e = enemy.away[i];
-		const speed = setEnemy.away.speed;
-
-		const prevY = e.y;
-
-		let isCollidingXenemy = false;
-		let isCollidingYenemy = false;
-
-		if (e.x < 0) {
-			enemy.away.splice(i, 1);
-			continue;
-		}
-		e.velocityY += gravity;
-
-		for (const bg of background) {
-			const hitbox = {
-				x: e.x + speed,
-				y: e.y,
-				width: e.width,
-				height: e.height,
-			};
-			if (!isCollidingXenemy) isCollidingXenemy = collision(hitbox, bg);
-
-			hitbox.x -= speed;
-			hitbox.y += e.velocityY;
-			if (!isCollidingYenemy) isCollidingYenemy = collision(hitbox, bg);
-		}
-
-		if (isCollidingXenemy) {
-			enemy.away.splice(i, 1);
-			continue;
-		} else {
-			e.x += speed;
-		}
-
-		if (isCollidingYenemy) {
-			e.y = prevY;
-			e.velocityY = 0;
-		}
-		e.y += e.velocityY;
-	}
+		player.velocityY = move.y * 3.5;
 
 	// Collision
 	let isCollidingX = false;
@@ -220,6 +178,54 @@ function update() {
 	}
 	player.y += player.velocityY;
 
+	// === enemy ===
+	for (let i = enemy.away.length - 1; i >= 0; i--) {
+		const e = enemy.away[i];
+		const speed = setEnemy.away.speed;
+		const damage = setEnemy.away.damage;
+
+		const prevY = e.y;
+
+		let isCollidingXenemy = false;
+		let isCollidingYenemy = false;
+
+		if (e.x < 0) {
+			enemy.away.splice(i, 1);
+			continue;
+		} else if (collision(player, e)) {
+			enemy.away.splice(i, 1);
+			player.hp -= damage;
+		}
+		e.velocityY += gravity;
+
+		for (const bg of background) {
+			const hitbox = {
+				x: e.x + speed,
+				y: e.y,
+				width: e.width,
+				height: e.height,
+			};
+			if (!isCollidingXenemy) isCollidingXenemy = collision(hitbox, bg);
+
+			hitbox.x -= speed;
+			hitbox.y += e.velocityY;
+			if (!isCollidingYenemy) isCollidingYenemy = collision(hitbox, bg);
+		}
+
+		if (isCollidingXenemy) {
+			enemy.away.splice(i, 1);
+			continue;
+		} else {
+			e.x += speed;
+		}
+
+		if (isCollidingYenemy) {
+			e.y = prevY;
+			e.velocityY = 0;
+		}
+		e.y += e.velocityY;
+	}
+
 	// === condition ===
 	// == add enemy away ==
 	const now = performance.now();
@@ -234,6 +240,7 @@ function update() {
 			addEnemy(
 				1,
 				"away",
+				100,
 				bg.x + bg.width - away.width,
 				bg.x + bg.width - away.width,
 				bg.y
@@ -246,6 +253,16 @@ function update() {
 		player.y += differentY;
 	}
 
+	if (player.hp <= 0 && !gameover) {
+		gameover = true;
+
+		titleText = "defeat";
+		colorTitle.hue = 0;
+		colorTitle.lightness = 50;
+		alphaTitleText = 1;
+		displayTitle = true;
+	}
+
 	if (player.x + player.width >= maxWorld) {
 		if (gameover) {
 			player.x = maxWorld - player.width;
@@ -253,21 +270,20 @@ function update() {
 			stage++;
 			nextStage = true;
 
-			nextStageText = true;
 			alphaTitleText = 1;
 			titleText = `Stage: ${stage}`;
+			displayTitle = true;
 		}
 		if (nextStage) {
 			if (stage === 3) {
 				changeBg(bgImg.error.bg, bgImg.error.deco);
 				canvas.style.backgroundColor = "hsl(198, 72%, 22%)";
 				colorTitle.lightness = 50;
-				setEnemy.away.speed = -5;
 			} else {
 				changeBg(bgImg.classic.bg, bgImg.classic.deco);
-				colorTitle.lightness += 25;
-				setEnemy.away.speed = -3;
+				colorTitle.lightness = 25;
 			}
+			setEnemy.away.speed -= 2;
 
 			if (stage > 3) {
 				gameover = true;
@@ -303,18 +319,33 @@ function draw() {
 		if (render(d)) game.drawImage(d.image, d.x, d.y, d.width, d.height);
 	}
 
-	player.draw(({ name, image, x, y, width, height, facingLeft }) => {
-		game.drawImage(image, x, y, width, height, facingLeft);
-		game.drawText(name, x + width / 2, y, {
-			color: "white",
-			textAlign: "center",
-		});
-	}, 250);
+	player.draw(
+		({ name, image, x, y, width, height, facingLeft, maxHp, hp }) => {
+		    ctx.save();
+		    ctx.translate(0, 0.5);
+			game.drawImage(image, x, y, width, height, facingLeft);
+			game.drawText(name, x + width / 2, y + height * 1.5, {
+				color: "white",
+				textAlign: "center",
+			});
+			game.drawRect(x, y, width, 5, {
+				color: "grey",
+			});
+			game.drawRect(x, y, (hp / maxHp) * width, 5, {
+				color: "lime",
+			});
+			ctx.restore();
+		},
+		250
+	);
 
 	for (const a of enemy.away) {
 		if (render(a)) {
 			a.draw(e => {
+				ctx.save();
+				ctx.translate(0, 3);
 				game.drawImage(e.image, e.x, e.y, e.width, e.height);
+				ctx.restore();
 			}, 250);
 		}
 	}
@@ -352,7 +383,7 @@ function loop(timeStamp) {
 	update();
 	draw();
 
-	if (nextStageText) {
+	if (displayTitle) {
 		if (gameover) {
 			alphaTitleText = 1;
 		} else {
@@ -364,7 +395,7 @@ function loop(timeStamp) {
 			color: `hsla(${colorTitle.hue}, ${colorTitle.saturation}%, ${colorTitle.lightness}%, ${alphaTitleText})`,
 			font: "64px Arial",
 		});
-		if (alphaTitleText === 0) nextStageText = false;
+		if (alphaTitleText === 0) displayTitle = false;
 	}
 
 	requestAnimationFrame(loop);
@@ -389,12 +420,13 @@ window.start = function () {
 
 /**
  * @param {number} add
+ * @param {number} hp
  * @param {string} name
  * @param {number} minX
  * @param {number} maxX
  * @param {number} y
  */
-function addEnemy(add, name, minX, maxX, y) {
+function addEnemy(add, name, hp, minX, maxX, y) {
 	const e = setEnemy[name];
 	if (!e) throw new Error(`${e} not found`);
 
@@ -403,6 +435,7 @@ function addEnemy(add, name, minX, maxX, y) {
 
 		const en = new Entity(
 			"away",
+			hp,
 			randomPosX,
 			y - e.height,
 			e.width,
