@@ -14,7 +14,7 @@ const game = new Canvas2D(ctx);
 const joystick = new Joystick(canvas, canvas.width * 0.2, canvas.height * 0.85);
 const player = new Entity(
 	"player",
-	50,
+	100,
 	canvas.width / 2,
 	0,
 	40,
@@ -78,12 +78,12 @@ const setEnemy = {
 			"./enemy/away3.png",
 			"./enemy/away4.png",
 		]),
-		width: 40,
-		height: 40,
+		width: 25,
+		height: 25,
 		speed: -3,
 		spawnIndex: 1,
 		spawnTime: 3000,
-		damage: 3,
+		damage: 5,
 	},
 	low: {
 		idle: image("./enemy/low2.png"),
@@ -127,12 +127,7 @@ function update() {
 
 	player.velocityY += gravity;
 
-	if (
-		player.isLanding &&
-		joystick.direction === "up" &&
-		joystick.handlePos.mag() > 50
-	)
-		player.velocityY = move.y * 3.5;
+	if (player.isLanding && joystick.direction === "up") player.velocityY = -9;
 
 	// Collision
 	let isCollidingX = false;
@@ -233,7 +228,7 @@ function update() {
 		lastTime = now;
 		const away = setEnemy.away;
 		const i = playerInBg + away.spawnIndex;
-		const setPos = background[playerInBg + i];
+		const setPos = background[i];
 
 		if (setPos) {
 			const bg = background[i];
@@ -277,7 +272,7 @@ function update() {
 		if (nextStage) {
 			if (stage === 3) {
 				changeBg(bgImg.error.bg, bgImg.error.deco);
-				canvas.style.backgroundColor = "hsl(198, 72%, 22%)";
+				canvas.style.backgroundColor = "hsl(198, 72%, 35%)";
 				colorTitle.lightness = 50;
 			} else {
 				changeBg(bgImg.classic.bg, bgImg.classic.deco);
@@ -321,8 +316,8 @@ function draw() {
 
 	player.draw(
 		({ name, image, x, y, width, height, facingLeft, maxHp, hp }) => {
-		    ctx.save();
-		    ctx.translate(0, 0.5);
+			ctx.save();
+			ctx.translate(0, 0.5);
 			game.drawImage(image, x, y, width, height, facingLeft);
 			game.drawText(name, x + width / 2, y + height * 1.5, {
 				color: "white",
