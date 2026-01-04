@@ -1,6 +1,7 @@
 export class Entity {
 	/**
 	 * @param {string} name
+	 * @param {number} hp
 	 * @param {number} x
 	 * @param {number} y
 	 * @param {number} width
@@ -23,14 +24,26 @@ export class Entity {
 
 		/** @type {number} */
 		this.hp = hp;
+		
+		/** @type {"none"|"left"|"right"|"up"|"down"} */
+		this.direction = "none";
+		
+		/** @type {Timer} */
+		this.timer = new Timer(0);
 
 		this.velocityX = 0;
 		this.velocityY = 0;
+		this.differentY = 0;
+		
+		/** @type {number} */
+		this.objIndex = null;
 
 		// === condition ===
 		this.isWalking = false;
 		this.facingLeft = false;
 		this.isLanding = false;
+		this.isCollideX = false;
+		this.isCollideY = false;
 
 		// === image ===
 		/** @type {number} */
@@ -50,9 +63,6 @@ export class Entity {
 
 		//=== for drawing ===
 		/** @private */
-		this._hasBeenSet = false;
-
-		/** @private */
 		this._time = 0;
 
 		/** @private */
@@ -60,6 +70,53 @@ export class Entity {
 
 		/** @private */
 		this._index = 0;
+	}
+	/**
+	 * @param {object[]} obj
+	 * @param {(obj: object) => void} callback
+	 * @param {(obj: object) => void} callbackX
+	 * @param {(obj: object) => void} callbackY
+	 * @param {(obj: object) => void} callbackXY
+	 */
+	checkCollisionMultiObj(objArr, callback, callbackX, callbackY, callbackXY) {
+		for (let o = 0; o < objArr.length; o++) {
+			checkObjArg(objArr[o], "number", ["x", "y", "width", "height"]);
+			let localCollideX = false;
+			let localCollideY = false;
+			
+			if (typeof callback === "function") callback(objArr[o]);
+			if (this.x + this.width > objArr[o].x && this.x < objArr[o].x + objArr[o].width) this.objIndex = objArr[o].index;
+
+			const hitbox = {
+				x: this.x + this.velocityX,
+				y: this.y,
+				width: this.width,
+				height: this.height,
+			};
+			if (!this.isCollideX) {
+			    this.isCollideX = collision(hitbox, objArr[o]);
+			    if (this.isCollideX) {
+			        if (typeof callbackX === "function") callbackX(objArr[o]);
+			        localCollideX = true;
+			    }
+			};
+
+			hitbox.x -= this.velocityX;
+			hitbox.y += this.velocityY;
+			if (!this.isCollideY) {
+			    this.isCollideY = collision(hitbox, objArr[o]);
+			    if (this.isCollideY) {
+			        if (typeof callbackY === "function") callbackY(objArr[o]);
+			        localCollideY = true;
+			    };
+			};
+			
+			if (
+			    typeof callbackXY === 'function' &&
+			    localCollideX &&
+			    localCollideY
+			) callbackXY(objArr[o]);
+		}
 	}
 	/**
 	 * @param {(entity: {image: HTMLImageElement, name: string, x: number, y: number, width: number, height: number, facingLeft: boolean}) => void} callback
@@ -158,4 +215,21 @@ export function collisionY(objA, objB) {
 	checkObjArg(objB, "number", ["y", "height"]);
 
 	return objA.y + objA.height > objB.y && objA.y < objB.y + objB.height;
+}
+
+export class Timer {
+    /** @param {number} interval */
+    constructor(interval) {
+        this.interval = interval;
+        this.elapsed = 0;
+    }
+    /** @param {number} dt */
+    update(dt) {
+        this.elapsed += dt;
+        if (this.elapsed >= this.interval) {
+            this.elapsed -= this.interval;
+            return true;
+        }
+        return false;
+    }
 }

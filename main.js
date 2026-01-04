@@ -1,5 +1,5 @@
 import { VirtualJoystick as Joystick } from "./module/Controller.js";
-import { Entity, collision } from "./module/Game.js";
+import { Entity, Timer, collision } from "./module/Game.js";
 import { image, onProgressAll } from "./module/Assets.js";
 import { Canvas2D } from "./module/Draw.js";
 
@@ -10,35 +10,22 @@ canvas.height = innerHeight;
 const ctx = canvas.getContext("2d");
 console.log(innerWidth, innerHeight);
 
+const gravity = 0.5;
 const game = new Canvas2D(ctx);
 const joystick = new Joystick(canvas, canvas.width * 0.2, canvas.height * 0.85);
-const player = new Entity(
-	"player",
-	100,
-	canvas.width / 2,
-	0,
-	40,
-	40,
-	image("./character/idle.png"),
-	image([
-		"./character/idle.png",
-		"./character/walk1.png",
-		"./character/idle.png",
-		"./character/walk2.png",
-	])
-);
+const player = new Entity( "player", 100, canvas.width / 2, 0, 40, 40, image("./character/idle.png"), image([ "./character/idle.png", "./character/walk1.png", "./character/idle.png", "./character/walk2.png", ]) );
+
 const camera = { x: 0, y: 0 };
 let gameover = false;
-let stage = 1;
 let nextStage = false;
 let displayTitle = true;
 let hardmode = false;
 
-const gravity = 0.5;
 const world = 10;
 const ground = canvas.height - 120;
 let background = [];
 let decoration = [];
+let lastBg = null;
 
 const bgImg = {
 	classic: {
@@ -67,8 +54,6 @@ const bgImg = {
 	},
 };
 
-changeBg(bgImg.classic.bg, bgImg.classic.deco);
-
 const setEnemy = {
 	away: {
 		idle: image("./enemy/away1.png"),
@@ -92,6 +77,10 @@ const setEnemy = {
 			"./enemy/low2.png",
 			"./enemy/low3.png",
 		]),
+		width: 40,
+		height: 40,
+		speed: 3,
+		changeDirectionDelay: 3000,
 	},
 	tall: {
 		idle: image("./enemy/tall2.png"),
@@ -108,9 +97,37 @@ let enemy = {
 	tall: [],
 };
 
-let lastTime = 0;
-let playerInBg = 0;
-function update() {
+let delay = {
+    awaySpawn: new Timer(setEnemy.away.spawnTime),
+}
+
+let stage = setStage();
+function* setStage() {
+    for (let i = 1; i <= 3; i++) {
+        if (i === 3) {
+            canvas.style.backgroundColor = "hsl(198, 72%, 35%)";
+            changeBg(bgImg.error.bg, bgImg.error.deco);
+        } else {
+            changeBg(bgImg.classic.bg, bgImg.classic.deco);
+        }
+        
+        enemy.low = [];
+        enemy.tall = [];
+        addEnemy(4, "low", 10, background[Math.floor(background.length / 2)].x, lastBg.x + lastBg.width, 0);
+        yield i;
+        
+        player.x = 0;
+	    player.y = background[0].y - player.height;
+		
+        setEnemy.away.speed -= 2;
+        
+        colorTitle.lightness = Math.min(50, colorTitle.lightness + 25);
+        
+        nextStage = true;
+    }
+}
+
+function update(dt) {
 	const maxWorld = canvas.width * world - world;
 	camera.x = player.x - canvas.width / 2 + player.width / 2;
 	camera.x = Math.max(0, Math.min(camera.x, maxWorld - canvas.width));
@@ -118,134 +135,122 @@ function update() {
 	// === player ===
 	const move = joystick.getVector().mul(3);
 
-	const prevXPlayer = player.x;
-	const prevYPlayer = player.y;
 	if (joystick.direction !== "none") player.facingLeft = move.x < 0;
-
-	if (player.x < 0) player.x = 0;
 	player.isWalking = move.x !== 0 && move.y !== 0;
-
+	
 	player.velocityY += gravity;
-
-	if (player.isLanding && joystick.direction === "up") player.velocityY = -9;
+	player.velocityX = move.x;
 
 	// Collision
-	let isCollidingX = false;
-	let isCollidingY = false;
-	let differentY = 0;
-
-	for (const bg of background) {
-		const playerHitbox = {
-			x: player.x,
-			y: player.y + player.velocityY,
-			width: player.width,
-			height: player.height,
-		};
-
-		if (!isCollidingY) {
-			isCollidingY = collision(playerHitbox, bg);
-			if (isCollidingY) playerInBg = bg.index;
-		}
-
-		playerHitbox.x += move.x;
-		playerHitbox.y -= player.velocityY;
-		if (!isCollidingX) {
-			isCollidingX = collision(playerHitbox, bg);
-
-			if (isCollidingX && player.isLanding) {
-				differentY = bg.y - (player.y + player.height);
-			}
-		}
-	}
-
-	if (isCollidingX) {
-		player.x = prevXPlayer;
-		player.isWalking = false;
-	} else {
-		player.x += move.x;
-	}
-	if (isCollidingY) {
-		player.velocityY = 0;
-		player.y = prevYPlayer;
-		player.isLanding = true;
-	} else {
-		player.isLanding = false;
-	}
+	player.isCollideX = false;
+	player.isCollideY = false;
+	player.differentY = 0;
+	
+	player.checkCollisionMultiObj(background, null,
+	    ({y}) => {
+	        player.isWalking = false;
+	        player.velocityX = 0;
+	        
+	        if (player.isLanding) player.differentY = y - player.y - player.height;
+	    },
+	    ({index}) => {
+	        if (index === player.objIndex) {
+	            player.velocityY = 0;
+	            player.isLanding = true;
+	        };
+	    }
+	)
+	if (!player.isCollideY) player.isLanding = false;
+	if (player.x + player.velocityX < 0) player.velocityX = 0;
+	
+	player.x += player.velocityX;
 	player.y += player.velocityY;
+	
+	if (player.isLanding && joystick.direction === "up") player.velocityY = -9;
 
 	// === enemy ===
+	// === away ===
 	for (let i = enemy.away.length - 1; i >= 0; i--) {
 		const e = enemy.away[i];
-		const speed = setEnemy.away.speed;
-		const damage = setEnemy.away.damage;
-
-		const prevY = e.y;
-
-		let isCollidingXenemy = false;
-		let isCollidingYenemy = false;
-
-		if (e.x < 0) {
-			enemy.away.splice(i, 1);
-			continue;
-		} else if (collision(player, e)) {
-			enemy.away.splice(i, 1);
-			player.hp -= damage;
-		}
+		const away = setEnemy.away;
+		let isAlive = true;
+		
+		e.velocityX = away.speed;
 		e.velocityY += gravity;
-
-		for (const bg of background) {
-			const hitbox = {
-				x: e.x + speed,
-				y: e.y,
-				width: e.width,
-				height: e.height,
-			};
-			if (!isCollidingXenemy) isCollidingXenemy = collision(hitbox, bg);
-
-			hitbox.x -= speed;
-			hitbox.y += e.velocityY;
-			if (!isCollidingYenemy) isCollidingYenemy = collision(hitbox, bg);
+		
+		e.isCollideX = false;
+		e.isCollideY = false;
+		
+		e.checkCollisionMultiObj(background, null, 
+		    () => { isAlive = false },
+		    () => { e.velocityY = 0 }
+		)
+		
+		if (collision(e, player)) {
+		    player.hp -= away.damage;
+		    isAlive = false;
 		}
-
-		if (isCollidingXenemy) {
-			enemy.away.splice(i, 1);
-			continue;
-		} else {
-			e.x += speed;
-		}
-
-		if (isCollidingYenemy) {
-			e.y = prevY;
-			e.velocityY = 0;
-		}
+		
+		e.x += e.velocityX;
 		e.y += e.velocityY;
+		
+		if (!isAlive) {
+		    enemy.away.splice(i, 1);
+		}
+	}
+
+	// === low ===
+	for (let i = enemy.low.length - 1; i >= 0; i--) {
+		const e = enemy.low[i];
+		const low = setEnemy.low;
+		let jumpAble = false;
+		
+		if (e.timer.update(dt)) {
+		    const random = randomInt(0, 2);
+		    e.direction = random === 0 ? "none" : (random === 1 ? "left" : "right");
+		    e.timer.interval = Math.min(4000, Math.max(1000, e.timer.interval + randomInt(-1000, 1000)));
+		}
+		
+		e.velocityX = e.direction === "none" ? 0 : (e.direction === "left" ? -low.speed : low.speed);
+		e.velocityY += gravity;
+		
+		e.isCollideX = false;
+		e.isCollideY = false;
+		
+		e.checkCollisionMultiObj(background, null,
+		    () => { e.velocityX = 0; jumpAble = true; },
+		    ({index}) => {
+		        if (index === e.objIndex) {
+		            e.velocityY = 0;
+		            e.isLanding = true;
+		        }; 
+		    }
+	    )
+	    if (!e.isCollideY) e.isLanding = false;
+	    if (e.x + e.velocityX < 0 | e.x + e.width + e.velocityX > lastBg.x - lastBg.width) e.velocityX = 0;
+		
+		e.x += e.velocityX;
+		e.y += e.velocityY;
+		
+		if (e.isLanding && jumpAble) e.velocityY = -9;
 	}
 
 	// === condition ===
 	// == add enemy away ==
-	const now = performance.now();
-	if (now - lastTime > setEnemy.away.spawnTime && !gameover) {
-		lastTime = now;
+	if (delay.awaySpawn.update(dt) && !gameover) {
 		const away = setEnemy.away;
-		const i = playerInBg + away.spawnIndex;
+		const i = player.objIndex + away.spawnIndex;
 		const setPos = background[i];
 
 		if (setPos) {
 			const bg = background[i];
-			addEnemy(
-				1,
-				"away",
-				100,
-				bg.x + bg.width - away.width,
-				bg.x + bg.width - away.width,
-				bg.y
-			);
+			addEnemy( 1, "away", 100, bg.x + bg.width - away.width, bg.x + bg.width - away.width, bg.y );
 		}
 	}
 
-	if (differentY >= -15 && differentY < 0) {
+	if (player.differentY >= -15 && player.differentY < 0) {
 		player.x += move.x;
-		player.y += differentY;
+		player.y += player.differentY;
 	}
 
 	if (player.hp <= 0 && !gameover) {
@@ -262,34 +267,19 @@ function update() {
 		if (gameover) {
 			player.x = maxWorld - player.width;
 		} else {
-			stage++;
-			nextStage = true;
+		    const s = stage.next().value;
 
 			alphaTitleText = 1;
-			titleText = `Stage: ${stage}`;
+			titleText = `Stage: ${s}`;
 			displayTitle = true;
 		}
 		if (nextStage) {
-			if (stage === 3) {
-				changeBg(bgImg.error.bg, bgImg.error.deco);
-				canvas.style.backgroundColor = "hsl(198, 72%, 35%)";
-				colorTitle.lightness = 50;
-			} else {
-				changeBg(bgImg.classic.bg, bgImg.classic.deco);
-				colorTitle.lightness = 25;
-			}
-			setEnemy.away.speed -= 2;
-
 			if (stage > 3) {
 				gameover = true;
 				titleText = "You Win";
 				canvas.style.backgroundColor = "hsl(198, 72%, 72%)";
 				colorTitle.hue = 130;
 			}
-
-			player.x = 0;
-			player.y = background[0].y - player.height;
-
 			nextStage = false;
 		}
 	}
@@ -319,22 +309,26 @@ function draw() {
 			ctx.save();
 			ctx.translate(0, 0.5);
 			game.drawImage(image, x, y, width, height, facingLeft);
-			game.drawText(name, x + width / 2, y + height * 1.5, {
-				color: "white",
-				textAlign: "center",
-			});
-			game.drawRect(x, y, width, 5, {
-				color: "grey",
-			});
-			game.drawRect(x, y, (hp / maxHp) * width, 5, {
-				color: "lime",
-			});
+			game.strokeRect(x, y, width, height);
+			game.drawText(name, x + width / 2, y + height * 1.5, { color: "white", textAlign: "center", });
+			game.drawRect(x, y, width, 5, { color: "grey", });
+			game.drawRect(x, y, (hp / maxHp) * width, 5, { color: "lime", });
 			ctx.restore();
 		},
 		250
 	);
 
 	for (const a of enemy.away) {
+		if (render(a)) {
+			a.draw(e => {
+				ctx.save();
+				ctx.translate(0, 3);
+				game.drawImage(e.image, e.x, e.y, e.width, e.height);
+				ctx.restore();
+			}, 250);
+		}
+	}
+	for (const a of enemy.low) {
 		if (render(a)) {
 			a.draw(e => {
 				ctx.save();
@@ -366,7 +360,7 @@ let colorTitle = {
 };
 let lastStamp = 0;
 let fps = 0;
-let titleText = `Stage: ${stage}`;
+let titleText = `Stage: 1`;
 function loop(timeStamp) {
 	ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -375,7 +369,7 @@ function loop(timeStamp) {
 	lastStamp = timeStamp;
 	fps = 1000 / delta;
 
-	update();
+	update(delta);
 	draw();
 
 	if (displayTitle) {
@@ -406,7 +400,9 @@ window.start = function () {
 		inputEl.focus();
 		return;
 	}
-
+	changeBg(bgImg.classic.bg, bgImg.classic.deco);
+    addEnemy(4, "low", 10, background[Math.floor(background.length / 2)].x, lastBg.x + lastBg.width, 0);
+    
 	player.name = input;
 	menu.style.display = "none";
 
@@ -426,7 +422,7 @@ function addEnemy(add, name, hp, minX, maxX, y) {
 	if (!e) throw new Error(`${e} not found`);
 
 	for (let i = 0; i < add; i++) {
-		const randomPosX = Math.floor(Math.random() * (maxX - minX + 1)) + minX;
+		const randomPosX = randomInt(minX, maxX);
 
 		const en = new Entity(
 			"away",
@@ -439,6 +435,7 @@ function addEnemy(add, name, hp, minX, maxX, y) {
 			e.walk
 		);
 		if (name === "away") en.isWalking = true;
+		if (e.changeDirectionDelay) en.timer = new Timer(e.changeDirectionDelay);
 
 		enemy[name].push(en);
 	}
@@ -454,12 +451,9 @@ function changeBg(bgImg, decoImg) {
 	const decoHeight = 100;
 
 	background = [];
-	const maxYbg = 20;
-	const minYbg = -20;
 
 	for (let i = 0; i < world; i++) {
-		const randomYbg =
-			Math.floor(Math.random() * (maxYbg - minYbg + 1)) + minYbg;
+		const randomYbg = randomInt(-20, 20);
 		const bg = {
 			image: bgImg,
 			x: canvas.width * i - i,
@@ -470,15 +464,9 @@ function changeBg(bgImg, decoImg) {
 		};
 		background.push(bg);
 
-		const randomChoice = Math.floor(Math.random() * decoImg.length);
-		const randomXdeco =
-			Math.floor(
-				Math.random() * (bg.x + bg.width - decoWidth - bg.x + 1)
-			) + bg.x;
-
 		const deco = {
-			image: decoImg[randomChoice],
-			x: randomXdeco,
+			image: decoImg[randomInt(0, decoImg.length - 1)],
+			x: randomInt(bg.x, bg.x + bg.width - decoWidth),
 			y: bg.y - decoWidth,
 			width: decoWidth,
 			height: decoHeight,
@@ -486,16 +474,16 @@ function changeBg(bgImg, decoImg) {
 		};
 		decoration.push(deco);
 	}
+	lastBg = background[background.length - 1];
 }
 
 /**
- * @param {string} enemyName
- * @param {number} maxX
- * @param {number} minX
- * @param {number} y
- * @param {number} width
- * @param {number} height
- */
+ * @param {number} min
+ * @param {number} max
+*/
+function randomInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
 
 !(function () {
 	const fullScreen = document.getElementById("fullScreen");
