@@ -8,7 +8,6 @@ const canvas = document.getElementById("canvas");
 canvas.width = innerWidth;
 canvas.height = innerHeight;
 const ctx = canvas.getContext("2d");
-console.log(innerWidth, innerHeight);
 
 const gravity = 0.5;
 const game = new Canvas2D(ctx);
@@ -21,7 +20,7 @@ let nextStage = false;
 let displayTitle = true;
 let hardmode = false;
 
-const world = 10;
+const world = 1;
 const ground = canvas.height - 120;
 let background = [];
 let decoration = [];
@@ -89,6 +88,10 @@ const setEnemy = {
 			"./enemy/tall2.png",
 			"./enemy/tall3.png",
 		]),
+		width: 50,
+		height: 50,
+		speed: 2,
+		changeDirectionDelay: 4000
 	},
 };
 let enemy = {
@@ -113,12 +116,13 @@ function* setStage() {
         
         enemy.low = [];
         enemy.tall = [];
-        addEnemy(4, "low", 10, background[Math.floor(background.length / 2)].x, lastBg.x + lastBg.width, 0);
+        if (i <= 2) {
+            addEnemy(2 * i, "low", 10, background[Math.floor(background.length / 2)].x, lastBg.x + lastBg.width, 0);
+        } else if (i === 3) {
+            addEnemy(4, "tall", 50, background[Math.floor(background.length / 2)].x, lastBg.x + lastBg.width, 0);
+        }
         yield i;
         
-        player.x = 0;
-	    player.y = background[0].y - player.height;
-		
         setEnemy.away.speed -= 2;
         
         colorTitle.lightness = Math.min(50, colorTitle.lightness + 25);
@@ -135,7 +139,7 @@ function update(dt) {
 	// === player ===
 	const move = joystick.getVector().mul(3);
 
-	if (joystick.direction !== "none") player.facingLeft = move.x < 0;
+	if (joystick.direction !== "none") player.mirror = move.x < 0;
 	player.isWalking = move.x !== 0 && move.y !== 0;
 	
 	player.velocityY += gravity;
@@ -146,20 +150,20 @@ function update(dt) {
 	player.isCollideY = false;
 	player.differentY = 0;
 	
-	player.checkCollisionMultiObj(background, null,
-	    ({y}) => {
-	        player.isWalking = false;
-	        player.velocityX = 0;
-	        
-	        if (player.isLanding) player.differentY = y - player.y - player.height;
-	    },
-	    ({index}) => {
-	        if (index === player.objIndex) {
-	            player.velocityY = 0;
-	            player.isLanding = true;
-	        };
-	    }
-	)
+	player.onCollideX = ({y}) => {
+        player.isWalking = false;
+        player.velocityX = 0;
+        
+        if (player.isLanding) player.differentY = y - player.y - player.height;
+	};
+	player.onCollideY = ({index}) => {
+        if (index === player.objIndex || index === player.objIndex - 1) {
+            player.isLanding = true;
+            player.velocityY = 0;
+        }
+    };
+	player.checkCollisionMultiObj(background);
+	
 	if (!player.isCollideY) player.isLanding = false;
 	if (player.x + player.velocityX < 0) player.velocityX = 0;
 	
@@ -181,10 +185,9 @@ function update(dt) {
 		e.isCollideX = false;
 		e.isCollideY = false;
 		
-		e.checkCollisionMultiObj(background, null, 
-		    () => { isAlive = false },
-		    () => { e.velocityY = 0 }
-		)
+		e.onCollideX = () => { isAlive = false };
+		e.onCollideY = () => { e.velocityY = 0 };
+		e.checkCollisionMultiObj(background);
 		
 		if (collision(e, player)) {
 		    player.hp -= away.damage;
@@ -208,26 +211,70 @@ function update(dt) {
 		if (e.timer.update(dt)) {
 		    const random = randomInt(0, 2);
 		    e.direction = random === 0 ? "none" : (random === 1 ? "left" : "right");
-		    e.timer.interval = Math.min(4000, Math.max(1000, e.timer.interval + randomInt(-1000, 1000)));
+		    e.timer.interval = Math.min(low.changeDirectionDelay, Math.max(low.changeDirectionDelay / 4, e.timer.interval + randomInt(-low.changeDirectionDelay / 4, low.changeDirectionDelay / 4)));
 		}
 		
 		e.velocityX = e.direction === "none" ? 0 : (e.direction === "left" ? -low.speed : low.speed);
 		e.velocityY += gravity;
 		
+		e.isWalking = e.direction !== "none";
+		if (e.direction !== "none") e.mirror = e.direction === "right";
+		
+		
 		e.isCollideX = false;
 		e.isCollideY = false;
 		
-		e.checkCollisionMultiObj(background, null,
-		    () => { e.velocityX = 0; jumpAble = true; },
-		    ({index}) => {
-		        if (index === e.objIndex) {
-		            e.velocityY = 0;
-		            e.isLanding = true;
-		        }; 
-		    }
-	    )
+	    e.onCollideX = () => { e.velocityX = 0; jumpAble = true; };
+	    e.onCollideY = ({index}) => {
+	        if (index === e.objIndex) {
+	            e.velocityY = 0;
+	            e.isLanding = true;
+	        }; 
+	    }
+		e.checkCollisionMultiObj(background);
+	    
 	    if (!e.isCollideY) e.isLanding = false;
-	    if (e.x + e.velocityX < 0 | e.x + e.width + e.velocityX > lastBg.x - lastBg.width) e.velocityX = 0;
+	    if (e.x + e.velocityX < 0 | e.x + e.width + e.velocityX > lastBg.x + lastBg.width) e.velocityX = 0;
+		
+		e.x += e.velocityX;
+		e.y += e.velocityY;
+		
+		if (e.isLanding && jumpAble) e.velocityY = -9;
+	}
+	
+	// === low ===
+	for (let i = enemy.tall.length - 1; i >= 0; i--) {
+		const e = enemy.tall[i];
+		const tall = setEnemy.tall;
+		let jumpAble = false;
+		
+		if (e.timer.update(dt)) {
+		    const random = randomInt(0, 2);
+		    e.direction = random === 0 ? "none" : (random === 1 ? "left" : "right");
+		    e.timer.interval = Math.min(tall.changeDirectionDelay, Math.max(tall.changeDirectionDelay / 4, e.timer.interval + randomInt(-tall.changeDirectionDelay / 4, tall.changeDirectionDelay / 4)));
+		}
+		
+		e.velocityX = e.direction === "none" ? 0 : (e.direction === "left" ? -tall.speed : tall.speed);
+		e.velocityY += gravity;
+		
+		e.isWalking = e.direction !== "none";
+		if (e.direction !== "none") e.mirror = e.direction === "right";
+		
+		
+		e.isCollideX = false;
+		e.isCollideY = false;
+		
+	    e.onCollideX = () => { e.velocityX = 0; jumpAble = true; };
+	    e.onCollideY = ({index}) => {
+	        if (index === e.objIndex) {
+	            e.velocityY = 0;
+	            e.isLanding = true;
+	        }; 
+	    }
+		e.checkCollisionMultiObj(background);
+	    
+	    if (!e.isCollideY) e.isLanding = false;
+	    if (e.x + e.velocityX < 0 | e.x + e.width + e.velocityX > lastBg.x + lastBg.width) e.velocityX = 0;
 		
 		e.x += e.velocityX;
 		e.y += e.velocityY;
@@ -264,22 +311,28 @@ function update(dt) {
 	}
 
 	if (player.x + player.width >= maxWorld) {
+        const s = stage.next().value;
+        
 		if (gameover) {
 			player.x = maxWorld - player.width;
 		} else {
-		    const s = stage.next().value;
-
-			alphaTitleText = 1;
-			titleText = `Stage: ${s}`;
-			displayTitle = true;
+            if (s) {
+    			alphaTitleText = 1;
+    			titleText = `Stage: ${s}`;
+    			displayTitle = true;
+            }
 		}
 		if (nextStage) {
-			if (stage > 3) {
+			if (!s) {
 				gameover = true;
 				titleText = "You Win";
 				canvas.style.backgroundColor = "hsl(198, 72%, 72%)";
 				colorTitle.hue = 130;
+				changeBg(bgImg.classic.bg, bgImg.classic.deco);
 			}
+			player.x = 0;
+			player.y = background[0].y - player.height;
+			
 			nextStage = false;
 		}
 	}
@@ -305,10 +358,10 @@ function draw() {
 	}
 
 	player.draw(
-		({ name, image, x, y, width, height, facingLeft, maxHp, hp }) => {
+		({ name, image, x, y, width, height, mirror, maxHp, hp }) => {
 			ctx.save();
 			ctx.translate(0, 0.5);
-			game.drawImage(image, x, y, width, height, facingLeft);
+			game.drawImage(image, x, y, width, height, mirror);
 			game.strokeRect(x, y, width, height);
 			game.drawText(name, x + width / 2, y + height * 1.5, { color: "white", textAlign: "center", });
 			game.drawRect(x, y, width, 5, { color: "grey", });
@@ -320,20 +373,30 @@ function draw() {
 
 	for (const a of enemy.away) {
 		if (render(a)) {
-			a.draw(e => {
+			a.draw(({ image, x, y, width, height }) => {
 				ctx.save();
 				ctx.translate(0, 3);
-				game.drawImage(e.image, e.x, e.y, e.width, e.height);
+				game.drawImage(image, x, y, width, height);
 				ctx.restore();
 			}, 250);
 		}
 	}
 	for (const a of enemy.low) {
 		if (render(a)) {
-			a.draw(e => {
+			a.draw(({ image, x, y, width, height, mirror }) => {
 				ctx.save();
 				ctx.translate(0, 3);
-				game.drawImage(e.image, e.x, e.y, e.width, e.height);
+				game.drawImage(image, x, y, width, height, mirror);
+				ctx.restore();
+			}, 250);
+		}
+	}
+	for (const a of enemy.tall) {
+		if (render(a)) {
+			a.draw(({ image, x, y, width, height, mirror }) => {
+				ctx.save();
+				ctx.translate(0, 3);
+				game.drawImage(image, x, y, width, height, mirror);
 				ctx.restore();
 			}, 250);
 		}

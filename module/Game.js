@@ -40,10 +40,16 @@ export class Entity {
 
 		// === condition ===
 		this.isWalking = false;
-		this.facingLeft = false;
+		this.mirror = false;
 		this.isLanding = false;
 		this.isCollideX = false;
 		this.isCollideY = false;
+		
+		// === function ===
+		this.onLoop = null;
+		this.onCollideX = null;
+		this.onCollideY = null;
+		this.onCollideXY = null;
 
 		// === image ===
 		/** @type {number} */
@@ -84,7 +90,7 @@ export class Entity {
 			let localCollideX = false;
 			let localCollideY = false;
 			
-			if (typeof callback === "function") callback(objArr[o]);
+			if (typeof this.onLoop === "function") this.onLoop(objArr[o]);
 			if (this.x + this.width > objArr[o].x && this.x < objArr[o].x + objArr[o].width) this.objIndex = objArr[o].index;
 
 			const hitbox = {
@@ -96,7 +102,7 @@ export class Entity {
 			if (!this.isCollideX) {
 			    this.isCollideX = collision(hitbox, objArr[o]);
 			    if (this.isCollideX) {
-			        if (typeof callbackX === "function") callbackX(objArr[o]);
+			        if (typeof this.onCollideX === "function") this.onCollideX(objArr[o]);
 			        localCollideX = true;
 			    }
 			};
@@ -106,20 +112,20 @@ export class Entity {
 			if (!this.isCollideY) {
 			    this.isCollideY = collision(hitbox, objArr[o]);
 			    if (this.isCollideY) {
-			        if (typeof callbackY === "function") callbackY(objArr[o]);
+			        if (typeof this.onCollideY === "function") this.onCollideY(objArr[o]);
 			        localCollideY = true;
 			    };
 			};
 			
 			if (
-			    typeof callbackXY === 'function' &&
+			    typeof this.onCollideXY === 'function' &&
 			    localCollideX &&
 			    localCollideY
-			) callbackXY(objArr[o]);
+			) this.onCollideXY(objArr[o]);
 		}
 	}
 	/**
-	 * @param {(entity: {image: HTMLImageElement, name: string, x: number, y: number, width: number, height: number, facingLeft: boolean}) => void} callback
+	 * @param {(entity: {image: HTMLImageElement, name: string, x: number, y: number, width: number, height: number, mirror: boolean}) => void} callback
 	 * @param {number} interval
 	 * @param {number} step
 	 */
@@ -143,7 +149,7 @@ export class Entity {
 			y: this.y,
 			width: this.width,
 			height: this.height,
-			facingLeft: this.facingLeft,
+			mirror: this.mirror,
 			maxHp: this.maxHp,
 			hp: this.hp,
 		});
