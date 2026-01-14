@@ -309,6 +309,14 @@ function update(dt) {
 		alphaTitleText = 1;
 		displayTitle = true;
 	}
+	
+	if (gameover) {
+	    enemy = {
+	        away: [],
+	        low: [],
+	        tall: []
+	    }
+	}
 
 	if (player.x + player.width >= maxWorld) {
         const s = stage.next().value;
@@ -329,6 +337,7 @@ function update(dt) {
 				canvas.style.backgroundColor = "hsl(198, 72%, 72%)";
 				colorTitle.hue = 130;
 				changeBg(bgImg.classic.bg, bgImg.classic.deco);
+				displayTitle = true;
 			}
 			player.x = 0;
 			player.y = background[0].y - player.height;
